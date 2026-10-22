@@ -1,0 +1,48 @@
+services:
+
+  # ── FastAPI backend ──────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: dockerfile.backend
+    container_name: echomind_backend
+    env_file:
+      - .env                          # MISTRAL_API_KEY, WHISPER_MODEL, etc.
+    ports:
+      - "8000:8000"                   # direct API access
+    volumes:
+      - ./vector_database:/app/vector_database   # ChromaDB persistence
+      - ./downloads:/app/downloads               # temp download dir
+      - ./sessions.json:/app/sessions.json       # session state
+      - hf_cache:/root/.cache/huggingface        # HuggingFace model cache
+      - whisper_cache:/root/.cache/whisper       # faster-whisper model cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ── nginx frontend ───────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: dockerfile.frontend
+    container_name: echomind_frontend
+    ports:
+      - "80:80"                      # visit http://localhost in browser
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+# ── Named volumes for model caches ────────────────────────────────────────────
+volumes:
+  hf_cache:
+  whisper_cache:
